@@ -11,7 +11,7 @@ fn panic_handler(_: &PanicInfo) -> ! {
 }
 
 #[no_mangle]
-unsafe extern "C" fn kernel_main(arg0: usize) -> ! {
-    let _ = sbi::debug_console::console_write("Hello World!");
+unsafe extern "C" fn kernel_main(_arg0: usize) -> ! {
+    let _ = sbi::debug_console::console_write("\nHello World!");
     loop {}
 }

@@ -1,9 +1,9 @@
 pub mod debug_console;
 
-use core::{arch::asm, usize};
+use core::arch::asm;
 
 use enum_primitive_derive_nostd::Primitive;
-use num_traits::{FromPrimitive, ToPrimitive};
+use num_traits::FromPrimitive;
 
 #[repr(isize)]
 #[derive(Primitive, Clone, Copy)]
@@ -30,7 +30,7 @@ struct SbiRet {
 pub type SbiResult = Result<usize, SbiError>;
 
 impl SbiRet {
-    fn to_result(self) -> SbiResult {
+    fn into_result(self) -> SbiResult {
         let err = SbiError::from_isize(self.error);
 
         if let Some(SbiError::Success) = err {

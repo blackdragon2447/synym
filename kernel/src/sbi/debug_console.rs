@@ -9,5 +9,5 @@ pub fn console_write(string: &str) -> SbiResult {
         a2: 0,
     };
     let ret = unsafe { super::sbi_call(0x4442434E, 0x0, args) };
-    ret.to_result()
+    ret.into_result()
 }
