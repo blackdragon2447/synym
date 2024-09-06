@@ -17,21 +17,28 @@
       pkgs = import nixpkgs {
         inherit system;
       };
+      crossPkgs = pkgs.pkgsCross.riscv64-embedded.buildPackages;
     in rec {
       devShells.llvm = pkgs.mkShell {
-        buildInputs = with pkgs.pkgsCross.riscv64-embedded.buildPackages; [clang just gdb];
-        nativeBuildInputs = with pkgs; [
-          qemu
-        ];
+        nativeBuildInputs =
+          (with pkgs; [
+            qemu
+            rustup
+            just
+          ])
+          ++ (with crossPkgs; [clang gdb]);
         shellHook = ''
           export CC="riscv64-none-elf-cc -mabi=lp64d"
         '';
       };
       devShells.gcc = pkgs.mkShell {
-        buildInputs = with pkgs.pkgsCross.riscv64-embedded.buildPackages; [gcc just gdb];
-        nativeBuildInputs = with pkgs; [
-          qemu
-        ];
+        nativeBuildInputs =
+          (with pkgs; [
+            qemu
+            rustup
+            just
+          ])
+          ++ (with crossPkgs; [gcc gdb]);
         shellHook = ''
           export CC="riscv64-none-elf-gcc -mabi=lp64d"
         '';
