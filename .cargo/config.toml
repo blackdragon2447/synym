@@ -2,5 +2,5 @@
 target = "riscv64gc-unknown-none-elf"
 
 [target.riscv64gc-unknown-none-elf]
-runner = "qemu-system-riscv64 -machine virt -nographic -kernel "
+runner = "qemu-system-riscv64 -machine virt,aia=aplic-imsic,aclint=on, -cpu rv64,h=false -nographic -kernel "
 rustflags = []
