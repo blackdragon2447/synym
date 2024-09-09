@@ -19,22 +19,24 @@
       };
       crossPkgs = pkgs.pkgsCross.riscv64-embedded.buildPackages;
     in rec {
-      devShells.llvm = pkgs.mkShell {
-        nativeBuildInputs =
-          (with pkgs; [
-            qemu
-            rustup
-          ])
-          ++ (with crossPkgs; [clang gdb]);
+      devShells = {
+        llvm = pkgs.mkShell {
+          nativeBuildInputs =
+            (with pkgs; [
+              qemu
+              rustup
+            ])
+            ++ (with crossPkgs; [clang gdb]);
+        };
+        gcc = pkgs.mkShell {
+          nativeBuildInputs =
+            (with pkgs; [
+              qemu
+              rustup
+            ])
+            ++ (with crossPkgs; [gcc gdb]);
+        };
+        default = devShells.llvm;
       };
-      devShells.gcc = pkgs.mkShell {
-        nativeBuildInputs =
-          (with pkgs; [
-            qemu
-            rustup
-          ])
-          ++ (with crossPkgs; [gcc gdb]);
-      };
-      devShells.default = devShells.llvm;
     });
 }

@@ -2,11 +2,11 @@ pub mod debug_console;
 
 use core::arch::asm;
 
-use enum_primitive_derive_nostd::Primitive;
-use num_traits::FromPrimitive;
+use num_enum::FromPrimitive;
 
 #[repr(isize)]
-#[derive(Primitive, Clone, Copy)]
+#[derive(FromPrimitive, Clone, Copy)]
+#[allow(dead_code)]
 pub enum SbiError {
     Success = 0isize,
     Failed = -1isize,
@@ -18,7 +18,8 @@ pub enum SbiError {
     AlreadyStarted = -7isize,
     AlreadyStopped = -8isize,
     SharedMemoryNotAvailable = -9isize,
-    Unknown = -10isize,
+    #[num_enum(catch_all)]
+    Unknown(isize) = -10,
 }
 
 #[derive(Default)]
@@ -31,14 +32,11 @@ pub type SbiResult = Result<usize, SbiError>;
 
 impl SbiRet {
     fn into_result(self) -> SbiResult {
-        let err = SbiError::from_isize(self.error);
+        let err = SbiError::from(self.error);
 
-        if let Some(SbiError::Success) = err {
-            Ok(self.value)
-        } else if let Some(e) = err {
-            Err(e)
-        } else {
-            Err(SbiError::Unknown)
+        match err {
+            SbiError::Success => Ok(self.value),
+            e => Err(e),
         }
     }
 }

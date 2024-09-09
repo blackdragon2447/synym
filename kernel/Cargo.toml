@@ -11,8 +11,4 @@ test = false
 bench = false
 
 [dependencies]
-enum-primitive-derive-nostd = "0.2.2"
-num-traits = { version = "0.2.19", default-features = false }
-
-[build-dependencies]
-cc = "1.0"
+num_enum = { version = "0.7.3", default-features = false, features = ["complex-expressions"] }
