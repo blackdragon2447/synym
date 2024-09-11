@@ -10,6 +10,7 @@ MEMORY
 PHDRS
 {
   text PT_LOAD;
+  rodata PT_LOAD;
   data PT_LOAD;
   bss PT_LOAD;
 }
@@ -20,7 +21,7 @@ SECTIONS
     PROVIDE(_text_start = .);
     *(.text.init) *(.text .text.*)
     PROVIDE(_text_end = .);
-  } >kernel_space AT>kernel_space :text
+  } >kernel_space :text
 
   . = ALIGN(8);
   PROVIDE(__global_pointer$ = .);
@@ -29,20 +30,20 @@ SECTIONS
     PROVIDE(_rodata_start = .);
     *(.rodata .rodata.*)
     PROVIDE(_rodata_end = .);
-  } >kernel_space AT>kernel_space :text
+  } >kernel_space :rodata
 
   .data : {
     . = ALIGN(4096);
     PROVIDE(_data_start = .);
     *(.sdata .sdata.*) *(.data .data.*)
     PROVIDE(_data_end = .);
-  } >kernel_space AT>kernel_space :data
+  } >kernel_space :data
 
-  .bss :{
+  .bss : {
     PROVIDE(_bss_start = .);
     *(.sbss .sbss.*) *(.bss .bss.*)
     PROVIDE(_bss_end = .);
-  } >kernel_space AT>kernel_space :bss
+  } >kernel_space :bss
 
   PROVIDE(_memory_start = ORIGIN(kernel_space));
   PROVIDE(_stack_start = _bss_end);

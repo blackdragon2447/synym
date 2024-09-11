@@ -39,8 +39,21 @@ unsafe extern "C" fn _start() -> ! {
     )
 }
 
+fn print_hello() {
+    let text = "
+ ____                              
+/ ___| _   _ _ __  _   _ _ __ ___  
+\\___ \\| | | | '_ \\| | | | '_ ` _ \\ 
+ ___) | |_| | | | | |_| | | | | | |
+|____/ \\__, |_| |_|\\__, |_| |_| |_|
+       |___/       |___/           
+\n";
+    let _ = sbi::debug_console::console_write(text);
+    let _ = sbi::debug_console::console_write("\nHello World!\n");
+}
+
 #[no_mangle]
-unsafe extern "C" fn kinit(_arg0: usize) -> ! {
-    let _ = sbi::debug_console::console_write("\nHello World!");
+extern "C" fn kinit(_arg0: usize) -> ! {
+    print_hello();
     loop {}
 }
