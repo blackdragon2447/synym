@@ -1,10 +1,14 @@
 #![feature(naked_functions)]
 #![no_std]
 #![no_main]
+#![allow(dead_code)]
 
 use core::{arch::asm, panic::PanicInfo};
 
+use sync::{LazyLock, Mutex, SpinLock};
+
 mod sbi;
+mod sync;
 
 #[panic_handler]
 fn panic_handler(_: &PanicInfo) -> ! {
@@ -55,5 +59,14 @@ fn print_hello() {
 #[no_mangle]
 extern "C" fn kinit(_arg0: usize) -> ! {
     print_hello();
+
+    let lock = Mutex::<&'static str, SpinLock>::new("");
+    let mut guard = lock.lock().unwrap();
+    *guard = "Hello Mutex\n";
+    let lock = LazyLock::<&'static str, SpinLock>::new(|| "Hello LazyLock\n");
+
+    let _ = sbi::debug_console::console_write(*guard);
+    let _ = sbi::debug_console::console_write(*lock);
+
     loop {}
 }
