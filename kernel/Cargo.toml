@@ -12,3 +12,11 @@ bench = false
 
 [dependencies]
 num_enum = { version = "0.7.3", default-features = false, features = ["complex-expressions"] }
+static_assertions = "1.1.0"
+
+[features]
+default = ["hardcode-devicetree"]
+
+hardcode-devicetree = []
+runtime-devicetree = []
+

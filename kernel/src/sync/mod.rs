@@ -30,7 +30,7 @@ impl<L: Lock> Drop for LockGuard<'_, L> {
     }
 }
 
-trait Lock
+pub trait Lock
 where
     Self: Sized,
 {

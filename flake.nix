@@ -25,6 +25,7 @@
             (with pkgs; [
               qemu
               rustup
+              dtc
             ])
             ++ (with crossPkgs; [clang gdb]);
         };
@@ -33,6 +34,7 @@
             (with pkgs; [
               qemu
               rustup
+              dtc
             ])
             ++ (with crossPkgs; [gcc gdb]);
         };

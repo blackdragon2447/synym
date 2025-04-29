@@ -1,17 +1,40 @@
-#![feature(naked_functions)]
+#![feature(
+    naked_functions,
+    str_from_raw_parts,
+    debug_closure_helpers,
+    allocator_api,
+    negative_impls,
+    iter_collect_into
+)]
 #![no_std]
 #![no_main]
 #![allow(dead_code)]
 
-use core::{arch::asm, panic::PanicInfo};
+extern crate alloc;
 
+use core::{arch::naked_asm, fmt::Write, panic::PanicInfo, usize};
+
+use alloc::vec::Vec;
+use allocators::LinkedListAllocator;
+use sbi::debug_console::Console;
 use sync::{LazyLock, Mutex, SpinLock};
 
+mod allocators;
+mod bytesreader;
+mod devtree;
 mod sbi;
 mod sync;
 
+extern "C" {
+    static _heap_start: usize;
+    static _heap_end: usize;
+    static _kernel_start: usize;
+    static _kernel_end: usize;
+}
+
 #[panic_handler]
-fn panic_handler(_: &PanicInfo) -> ! {
+fn panic_handler(info: &PanicInfo) -> ! {
+    writeln!(Console, "{info}");
     loop {}
 }
 
@@ -19,7 +42,7 @@ fn panic_handler(_: &PanicInfo) -> ! {
 #[link_section = ".text.init"]
 #[no_mangle]
 unsafe extern "C" fn _start() -> ! {
-    asm!(
+    naked_asm!(
         ".option push",
         ".option norelax",
         "   la      gp, __global_pointer$",
@@ -39,7 +62,6 @@ unsafe extern "C" fn _start() -> ! {
         "   csrw    sie, zero",
         "   csrw    sepc, t1",
         "   sret",
-        options(noreturn)
     )
 }
 
@@ -67,6 +89,38 @@ extern "C" fn kinit(_arg0: usize) -> ! {
 
     let _ = sbi::debug_console::console_write(*guard);
     let _ = sbi::debug_console::console_write(*lock);
+    let _ = sbi::debug_console::console_write("\n");
+
+    let boot_heap = unsafe {
+        let mut alloc = LinkedListAllocator::new();
+        let heap_start = LinkedListAllocator::align_start(&_heap_start as *const usize as usize);
+        let heap_size = &_heap_end as *const usize as usize - &_heap_start as *const usize as usize;
+        writeln!(Console, "boot_heap_start: {:#X}", heap_start);
+        writeln!(Console, "boot_heap_size: {:#X}\n", heap_size);
+        alloc.init(heap_start, heap_size);
+        Mutex::<LinkedListAllocator, SpinLock>::new(alloc)
+    };
+
+    let devtree = devtree::decode_dtb(&devtree::DEVTREE, &boot_heap);
+
+    writeln!(Console, "Memory nodes in devtree");
+    let mut mem_regions = Vec::new_in(&boot_heap);
+    let mem_nodes = devtree.get_nodes("/memory", &boot_heap);
+    for mem in mem_nodes {
+        assert!(mem.unit_name() == "memory");
+        writeln!(Console, "node: {}", mem.name());
+        let reg = devtree
+            .regs_for_node("/memory", mem.unit_addr(), &boot_heap)
+            .unwrap();
+        mem_regions.extend(reg.into_iter());
+    }
+    writeln!(Console, "End memory nodes in devtree\n");
+
+    writeln!(Console, "Memory regions");
+    for (a, s) in mem_regions {
+        writeln!(Console, "reg_addr: {a:#X}, reg_size: {s:#X}");
+    }
+    writeln!(Console, "End memory regions\n");
 
     loop {}
 }

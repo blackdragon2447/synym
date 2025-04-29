@@ -4,7 +4,7 @@ ENTRY( _start )
 
 MEMORY
 {
-  kernel_space   (wxa) : ORIGIN = 0x80500000, LENGTH = 128M
+  kernel_space   (wxa) : ORIGIN = 0x80080000, LENGTH = 32M
 }
 
 PHDRS
@@ -17,6 +17,7 @@ PHDRS
 
 SECTIONS
 {
+
   .text : {
     PROVIDE(_text_start = .);
     *(.text.init) *(.text .text.*)
@@ -45,10 +46,11 @@ SECTIONS
     PROVIDE(_bss_end = .);
   } >kernel_space :bss
 
-  PROVIDE(_memory_start = ORIGIN(kernel_space));
+  PROVIDE(_kernel_start= ORIGIN(kernel_space));
+  PROVIDE(_kernel_size = LENGTH(kernel_space));
   PROVIDE(_stack_start = _bss_end);
   PROVIDE(_stack_end = _stack_start + 16K);
   PROVIDE(_heap_start = _stack_end);
-  PROVIDE(_heap_size = _memory_end - _heap_start);
+  PROVIDE(_heap_end = _kernel_start + _kernel_size);
 
 }
