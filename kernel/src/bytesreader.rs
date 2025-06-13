@@ -1,5 +1,3 @@
-use core::slice;
-
 pub struct BytesReader<'a> {
     bytes: &'a [u8],
     pos: usize,
@@ -50,8 +48,8 @@ impl<'a> BytesReader<'a> {
         }
     }
 
-    pub fn null_term_string(&mut self) -> &'a str {
-        read_null_term_string(self.bytes, &mut self.pos)
+    pub fn null_term_str(&mut self) -> &'a str {
+        read_null_term_str(self.bytes, &mut self.pos)
     }
 
     pub fn pos(&self) -> usize {
@@ -59,7 +57,7 @@ impl<'a> BytesReader<'a> {
     }
 }
 
-pub fn read_null_term_string<'a>(bytes: &'a [u8], pos: &mut usize) -> &'a str {
+pub fn read_null_term_str<'a>(bytes: &'a [u8], pos: &mut usize) -> &'a str {
     let mut len = 0;
     while 0 != bytes[*pos + len] {
         len += 1;

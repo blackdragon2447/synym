@@ -1,6 +1,6 @@
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use super::{Lock, LockError, LockGuard, LockResult};
+use super::{Lock, LockError, LockGuard, LockResult, Unlock};
 
 pub struct SpinLock {
     lock: AtomicBool,
@@ -16,12 +16,12 @@ impl SpinLock {
 
 impl Lock for SpinLock {
     fn lock(&self) -> LockResult<LockGuard<Self>> {
-        while self.lock.swap(true, Ordering::SeqCst) {}
+        while self.lock.swap(true, Ordering::Acquire) {}
         Ok(LockGuard(self))
     }
 
     fn try_lock(&self) -> LockResult<LockGuard<Self>> {
-        if self.lock.swap(true, Ordering::SeqCst) {
+        if self.lock.swap(true, Ordering::Acquire) {
             Err(LockError::WouldBlock)
         } else {
             Ok(LockGuard(self))
@@ -29,10 +29,12 @@ impl Lock for SpinLock {
     }
 
     fn is_locked(&self) -> bool {
-        self.lock.load(Ordering::SeqCst)
+        self.lock.load(Ordering::Relaxed)
     }
+}
 
+impl Unlock for SpinLock {
     fn unlock(&self) {
-        self.lock.store(false, Ordering::SeqCst)
+        self.lock.store(false, Ordering::Release)
     }
 }

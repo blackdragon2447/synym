@@ -10,8 +10,8 @@ use decode::{DebugLimList, FdtReserveEntry, Header};
 use static_assertions::assert_cfg;
 
 use crate::{
-    bytesreader::{read_null_term_string, BytesReader},
-    sbi::debug_console::Console,
+    bytesreader::{read_null_term_str, BytesReader},
+    print, println,
 };
 
 assert_cfg!(
@@ -77,7 +77,7 @@ impl<'a, A: Allocator + Debug> DeviceTreeNode<'a, A> {
         self.properties
             .iter()
             .find(|(n, _)| *n == property)
-            .map(|(_, v)| parse(*v))
+            .map(|(_, v)| parse(v))
     }
 
     pub fn address_size_cells(&self) -> (Option<u32>, Option<u32>) {
@@ -163,8 +163,9 @@ impl<'a, A: Allocator + Debug> DeviceTreeNode<'a, A> {
                         c.name == name
                     }
                 })
-                .map(|c| c.regs_for_node_int(child_path, unit_addr, alloc, addr_cells, size_cells))
-                .flatten()
+                .and_then(|c| {
+                    c.regs_for_node_int(child_path, unit_addr, alloc, addr_cells, size_cells)
+                })
         } else {
             let parse_reg = |b: &[u8]| {
                 let mut pairs = Vec::new_in(alloc);
@@ -199,14 +200,12 @@ impl<'a, A: Allocator + Debug> DeviceTreeNode<'a, A> {
                             false
                         }
                     })
-                    .map(|n| n.get_and_parse_property("reg", parse_reg))
-                    .flatten()
+                    .and_then(|n| n.get_and_parse_property("reg", parse_reg))
             } else {
                 self.childeren
                     .iter()
                     .find(|c| c.name == path)
-                    .map(|n| n.get_and_parse_property("reg", parse_reg))
-                    .flatten()
+                    .and_then(|n| n.get_and_parse_property("reg", parse_reg))
             }
         }
     }
@@ -216,7 +215,7 @@ pub fn decode_dtb<'a, 'b: 'a, A: Allocator, const SIZE: usize>(
     dtb: &'b Dtb<SIZE>,
     alloc: &'a A,
 ) -> DeviceTree<'a, A> {
-    writeln!(Console, "Device tree header:");
+    println!("Device tree header:");
     let mut reader = BytesReader::new(&dtb.0);
 
     let header = Header {
@@ -238,19 +237,19 @@ pub fn decode_dtb<'a, 'b: 'a, A: Allocator, const SIZE: usize>(
         "Device tree has a different size than reported"
     );
     assert_eq!(header.version, 17);
-    writeln!(Console, "{:#?}\n", header);
+    println!("{:#?}\n", header);
 
-    writeln!(Console, "Device tree mem_rsvmap:");
+    println!("Device tree mem_rsvmap:");
     let mut reader = BytesReader::new(&dtb.0[(header.off_mem_rsvmap as usize)..]);
 
     let mut reserved = Vec::new_in(alloc);
 
     while let Some(entry) = read_fdt_reserve_entry(&mut reader) {
-        writeln!(Console, "{:#?}", entry);
+        println!("{:#?}", entry);
         reserved.push(entry);
     }
 
-    writeln!(Console, "mem_rsvmap done");
+    println!("mem_rsvmap done");
 
     let mut nodes = BytesReader::new(
         &dtb.0[(header.off_dt_struct as usize)
@@ -259,14 +258,14 @@ pub fn decode_dtb<'a, 'b: 'a, A: Allocator, const SIZE: usize>(
     let strings = &dtb.0[(header.off_dt_string as usize)
         ..(header.off_dt_string as usize + header.size_dt_strings as usize)];
 
-    writeln!(Console, "Begin nodes");
+    println!("Begin nodes");
     let root = read_node(
         unsafe { &mut *(&mut nodes as *mut BytesReader) },
         strings,
         0,
         alloc,
     );
-    writeln!(Console, "Nodes done\n");
+    println!("Nodes done\n");
 
     DeviceTree {
         header,
@@ -298,7 +297,7 @@ fn read_node<'a, A: Allocator>(
     alloc: &'a A,
 ) -> DeviceTreeNode<'a, A> {
     indent(depth);
-    write!(Console, "Begin node: ");
+    print!("Begin node: ");
 
     while nodes.peek_u32_be() == FDT_NOP {
         nodes.read_u64_be();
@@ -306,9 +305,9 @@ fn read_node<'a, A: Allocator>(
 
     let token = nodes.read_u32_be();
     assert_eq!(token, FDT_BEGIN_NODE);
-    let name = nodes.null_term_string();
+    let name = nodes.null_term_str();
     nodes.align_to(4);
-    writeln!(Console, "{name} [{}]", name.len());
+    println!("{name} [{}]", name.len());
 
     let mut properties = Vec::new_in(alloc);
     let mut childeren = Vec::new_in(alloc);
@@ -341,11 +340,11 @@ fn read_node<'a, A: Allocator>(
                 let name_off = nodes.read_u32_be();
                 let mut name_off = name_off as usize;
 
-                let name = read_null_term_string(strings, &mut name_off);
+                let name = read_null_term_str(strings, &mut name_off);
 
                 let prop_val = nodes.read_bytes(prop_len as usize);
                 indent(depth + 1);
-                writeln!(Console, "{name}: {:?}", DebugLimList(&prop_val));
+                println!("{name}: {:?}", DebugLimList(prop_val));
                 nodes.align_to(4);
 
                 properties.push((name, prop_val));
@@ -355,7 +354,7 @@ fn read_node<'a, A: Allocator>(
     }
 
     indent(depth);
-    writeln!(Console, "Node done");
+    println!("Node done");
 
     DeviceTreeNode {
         name,
@@ -366,6 +365,6 @@ fn read_node<'a, A: Allocator>(
 
 fn indent(depth: usize) {
     for _ in 0..depth {
-        write!(Console, "\t");
+        print!("\t");
     }
 }

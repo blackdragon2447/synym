@@ -12,11 +12,10 @@
 
 extern crate alloc;
 
-use core::{arch::naked_asm, fmt::Write, panic::PanicInfo, usize};
+use core::{arch::naked_asm, fmt::Write, panic::PanicInfo};
 
 use alloc::vec::Vec;
 use allocators::LinkedListAllocator;
-use sbi::debug_console::Console;
 use sync::{LazyLock, Mutex, SpinLock};
 
 mod allocators;
@@ -32,9 +31,29 @@ extern "C" {
     static _kernel_end: usize;
 }
 
+#[macro_export]
+macro_rules! println {
+    ($($arg:tt)*) => {
+        writeln!($crate::sbi::debug_console::Console, $($arg)*).unwrap()
+    };
+    () => {
+        writeln!($crate::sbi::debug_console::Console, "").unwrap()
+    };
+}
+
+#[macro_export]
+macro_rules! print {
+    ($($arg:tt)*) => {
+        write!($crate::sbi::debug_console::Console, $($arg)*).unwrap()
+    };
+    () => {
+        write!($crate::sbi::debug_console::Console, "").unwrap()
+    };
+}
+
 #[panic_handler]
 fn panic_handler(info: &PanicInfo) -> ! {
-    writeln!(Console, "{info}");
+    println!("{info}");
     loop {}
 }
 
@@ -74,8 +93,8 @@ fn print_hello() {
 |____/ \\__, |_| |_|\\__, |_| |_| |_|
        |___/       |___/           
 \n";
-    let _ = sbi::debug_console::console_write(text);
-    let _ = sbi::debug_console::console_write("\nHello World!\n");
+    println!("{text}");
+    println!("Hello World!\n");
 }
 
 #[no_mangle]
@@ -87,40 +106,41 @@ extern "C" fn kinit(_arg0: usize) -> ! {
     *guard = "Hello Mutex\n";
     let lock = LazyLock::<&'static str, SpinLock>::new(|| "Hello LazyLock\n");
 
-    let _ = sbi::debug_console::console_write(*guard);
-    let _ = sbi::debug_console::console_write(*lock);
-    let _ = sbi::debug_console::console_write("\n");
+    println!("{}", *guard);
+    println!("{}", *lock);
+    println!("");
 
     let boot_heap = unsafe {
         let mut alloc = LinkedListAllocator::new();
         let heap_start = LinkedListAllocator::align_start(&_heap_start as *const usize as usize);
         let heap_size = &_heap_end as *const usize as usize - &_heap_start as *const usize as usize;
-        writeln!(Console, "boot_heap_start: {:#X}", heap_start);
-        writeln!(Console, "boot_heap_size: {:#X}\n", heap_size);
+        println!("boot_heap_start: {:#X}", heap_start);
+        println!("boot_heap_size: {:#X}\n", heap_size);
         alloc.init(heap_start, heap_size);
         Mutex::<LinkedListAllocator, SpinLock>::new(alloc)
     };
 
     let devtree = devtree::decode_dtb(&devtree::DEVTREE, &boot_heap);
 
-    writeln!(Console, "Memory nodes in devtree");
+    println!("Memory nodes in devtree");
     let mut mem_regions = Vec::new_in(&boot_heap);
     let mem_nodes = devtree.get_nodes("/memory", &boot_heap);
     for mem in mem_nodes {
         assert!(mem.unit_name() == "memory");
-        writeln!(Console, "node: {}", mem.name());
+        println!("node: {}", mem.name());
         let reg = devtree
             .regs_for_node("/memory", mem.unit_addr(), &boot_heap)
             .unwrap();
         mem_regions.extend(reg.into_iter());
     }
-    writeln!(Console, "End memory nodes in devtree\n");
+    println!("End memory nodes in devtree\n");
 
-    writeln!(Console, "Memory regions");
+    println!("Memory regions");
     for (a, s) in mem_regions {
-        writeln!(Console, "reg_addr: {a:#X}, reg_size: {s:#X}");
+        println!("reg_addr: {a:#X}, reg_size: {s:#X}");
     }
-    writeln!(Console, "End memory regions\n");
+    println!("End memory regions\n");
 
+    #[allow(clippy::empty_loop)]
     loop {}
 }

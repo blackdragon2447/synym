@@ -16,7 +16,7 @@ pub enum LockError {
 
 pub type LockResult<T> = Result<T, LockError>;
 
-struct LockGuard<'l, L: Lock>(&'l L);
+pub struct LockGuard<'l, L: Lock>(&'l L);
 
 impl<L: Lock> LockGuard<'_, L> {
     fn unlock(self) {
@@ -30,7 +30,7 @@ impl<L: Lock> Drop for LockGuard<'_, L> {
     }
 }
 
-pub trait Lock
+pub trait Lock: Unlock
 where
     Self: Sized,
 {
@@ -39,6 +39,8 @@ where
     fn try_lock(&self) -> LockResult<LockGuard<Self>>;
 
     fn is_locked(&self) -> bool;
+}
 
+trait Unlock {
     fn unlock(&self);
 }

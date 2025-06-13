@@ -3,7 +3,6 @@ use core::{
     fmt::Debug,
     mem,
     ptr::{null_mut, NonNull},
-    slice,
 };
 
 use crate::{
@@ -73,7 +72,7 @@ impl LinkedListAllocator {
         let mut current = &mut self.head;
         // look for a large enough memory region in linked list
         while let Some(ref mut region) = current.next {
-            if let Ok(alloc_start) = Self::alloc_from_region(&region, size, align) {
+            if let Ok(alloc_start) = Self::alloc_from_region(region, size, align) {
                 // region suitable for allocation -> remove node from list
                 let next = region.next.take();
                 let ret = Some((current.next.take().unwrap(), alloc_start));
@@ -141,9 +140,10 @@ unsafe impl<L: Lock> Allocator for Mutex<LinkedListAllocator, L> {
                 }
             }
             unsafe {
-                Ok(NonNull::new_unchecked(
-                    slice::from_raw_parts_mut(alloc_start as *mut u8, size) as *mut [u8],
-                ))
+                Ok(NonNull::new_unchecked(core::ptr::slice_from_raw_parts_mut(
+                    alloc_start as *mut u8,
+                    size,
+                )))
             }
         } else {
             Err(AllocError)
