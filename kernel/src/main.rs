@@ -4,7 +4,9 @@
     debug_closure_helpers,
     allocator_api,
     negative_impls,
-    iter_collect_into
+    iter_collect_into,
+    pointer_is_aligned_to,
+    btreemap_alloc
 )]
 #![no_std]
 #![no_main]
@@ -12,14 +14,25 @@
 
 extern crate alloc;
 
-use core::{arch::naked_asm, fmt::Write, panic::PanicInfo};
+use core::{arch::naked_asm, fmt::Write, ops::Range, panic::PanicInfo, slice};
 
 use alloc::vec::Vec;
-use allocators::LinkedListAllocator;
+use allocators::{
+    boot_alloc::BOOT_HEAP,
+    paging::{
+        add_pages_from_range, get_zpage, init_page_alloc,
+        table::{PTEFlags, PTLevel, PageTable},
+    },
+};
+use csr::Csr;
+#[cfg(feature = "runtime-devicetree")]
+use devtree::Dtb;
+use enumflags2::make_bitflags;
 use sync::{LazyLock, Mutex, SpinLock};
 
 mod allocators;
 mod bytesreader;
+mod csr;
 mod devtree;
 mod sbi;
 mod sync;
@@ -98,8 +111,15 @@ fn print_hello() {
 }
 
 #[no_mangle]
-extern "C" fn kinit(_arg0: usize) -> ! {
+extern "C" fn kinit(
+    hartid: usize,
+    #[cfg(feature = "runtime-devicetree")] dtb_addr: *const u8,
+) -> ! {
     print_hello();
+
+    println!("Starting hart {hartid}");
+    #[cfg(feature = "runtime-devicetree")]
+    println!("DTB is at {:#X}", dtb_addr as usize);
 
     let lock = Mutex::<&'static str, SpinLock>::new("");
     let mut guard = lock.lock().unwrap();
@@ -110,37 +130,117 @@ extern "C" fn kinit(_arg0: usize) -> ! {
     println!("{}", *lock);
     println!("");
 
-    let boot_heap = unsafe {
-        let mut alloc = LinkedListAllocator::new();
-        let heap_start = LinkedListAllocator::align_start(&_heap_start as *const usize as usize);
-        let heap_size = &_heap_end as *const usize as usize - &_heap_start as *const usize as usize;
-        println!("boot_heap_start: {:#X}", heap_start);
-        println!("boot_heap_size: {:#X}\n", heap_size);
-        alloc.init(heap_start, heap_size);
-        Mutex::<LinkedListAllocator, SpinLock>::new(alloc)
+    #[cfg(feature = "hardcode-devicetree")]
+    let devtree = devtree::decode_dtb(&devtree::DEVTREE, &*BOOT_HEAP);
+    #[cfg(feature = "runtime-devicetree")]
+    let dtb = unsafe { Dtb::from_pointer(dtb_addr) };
+    #[cfg(feature = "runtime-devicetree")]
+    let devtree = {
+        let tree = devtree::decode_dtb(&dtb, &*BOOT_HEAP);
+        tree
     };
 
-    let devtree = devtree::decode_dtb(&devtree::DEVTREE, &boot_heap);
-
     println!("Memory nodes in devtree");
-    let mut mem_regions = Vec::new_in(&boot_heap);
-    let mem_nodes = devtree.get_nodes("/memory", &boot_heap);
+    let mut mem_regions = Vec::new_in(&*BOOT_HEAP);
+    let mem_nodes = devtree.get_nodes("/memory", &*BOOT_HEAP);
     for mem in mem_nodes {
         assert!(mem.unit_name() == "memory");
         println!("node: {}", mem.name());
         let reg = devtree
-            .regs_for_node("/memory", mem.unit_addr(), &boot_heap)
+            .regs_for_node("/memory", mem.unit_addr(), &*BOOT_HEAP)
             .unwrap();
         mem_regions.extend(reg.into_iter());
     }
     println!("End memory nodes in devtree\n");
 
     println!("Memory regions");
-    for (a, s) in mem_regions {
-        println!("reg_addr: {a:#X}, reg_size: {s:#X}");
+    for (a, s) in &mem_regions {
+        println!("reg_addr: {a:#X}, reg_size: {s:#X}, reg_end: {:#X}", a + s);
     }
     println!("End memory regions\n");
 
+    let heap_end = unsafe {
+        let heap_end = &_heap_end as *const usize;
+        let align = heap_end.align_offset(0x1000);
+        let heap_end_aligned = heap_end.wrapping_add(align);
+        println!(
+            "free pages start: {:#X} ({:#X})\n",
+            heap_end as usize, heap_end_aligned as usize
+        );
+        heap_end_aligned as usize
+    };
+
+    println!("Collecting free pages");
+
+    init_page_alloc();
+
+    for (a, s) in &mem_regions {
+        println!("{:#X}, {:#X}", a, s);
+        let range = *a..(a + s);
+        if range.contains(&heap_end) {
+            match sub_range(range, *a..heap_end) {
+                (None, None) => {}
+                (None, Some(r)) => add_pages_from_range(r),
+                (Some(r), None) => add_pages_from_range(r),
+                (Some(rl), Some(rr)) => {
+                    add_pages_from_range(rl);
+                    add_pages_from_range(rr);
+                }
+            }
+        } else {
+            add_pages_from_range(range);
+        }
+    }
+
+    println!("Done collecting free pages\n");
+
+    println!("Setting up paging for kernel");
+
+    let pagetable = unsafe {
+        let page = get_zpage().unwrap();
+        let table = page as *mut PageTable;
+        &mut *table
+    };
+    pagetable.map(
+        0x80200000,
+        0x80200000,
+        make_bitflags!(PTEFlags::{Read | Write | Exec }),
+        PTLevel::MegaPage as u64,
+    );
+    pagetable.map(
+        0x80400000,
+        0x80400000,
+        make_bitflags!(PTEFlags::{Read | Write | Exec }),
+        PTLevel::MegaPage as u64,
+    );
+
+    println!("Set up paging for kernel, using the following page table");
+    pagetable.print_recursive();
+
+    let satp = (9 << 60)
+        | (0xffff << 44)
+        | (((pagetable as *mut PageTable as u64) >> 12) & 0xfff_ffff_ffff);
+
+    println!();
+    csr::Satp::write(satp);
+    let satp_check = csr::Satp::read();
+    assert_eq!(satp, satp_check, "Write to satp failed");
+    println!("Seccessfully activated paging");
+
     #[allow(clippy::empty_loop)]
     loop {}
+}
+
+fn sub_range<T: PartialOrd>(lhs: Range<T>, rhs: Range<T>) -> (Option<Range<T>>, Option<Range<T>>) {
+    if rhs.start <= lhs.start && rhs.end >= lhs.end {
+        (None, None)
+    } else if rhs.start <= lhs.start && rhs.end < lhs.end {
+        (Some(rhs.end..lhs.end), None)
+    } else if rhs.start > lhs.start && rhs.end >= lhs.end {
+        (Some(rhs.start..lhs.end), None)
+    } else if rhs.start > lhs.start && rhs.end < lhs.end {
+        (Some(lhs.start..rhs.start), Some(rhs.end..lhs.end))
+    } else {
+        todo!()
+    }
 }

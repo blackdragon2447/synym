@@ -1,5 +1,7 @@
 // Based off https://os.phil-opp.com/allocator-designs/#linked-list-allocator
+pub mod boot_alloc;
 mod linked_list_alloc;
+pub mod paging;
 
 pub use linked_list_alloc::LinkedListAllocator;
 

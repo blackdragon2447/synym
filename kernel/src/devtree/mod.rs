@@ -4,6 +4,7 @@ use alloc::vec::Vec;
 use core::{
     alloc::Allocator,
     fmt::{Debug, Write},
+    slice,
 };
 
 use decode::{DebugLimList, FdtReserveEntry, Header};
@@ -29,12 +30,17 @@ assert_cfg!(
 );
 
 #[repr(align(32))]
-pub struct Dtb<const SIZE: usize>([u8; SIZE]);
+pub struct Dtb(&'static [u8]);
 
 #[cfg(feature = "hardcode-devicetree")]
-const DEVTREE_SIZE: usize = include_bytes!(env!("DEVTREE_PATH")).len();
-#[cfg(feature = "hardcode-devicetree")]
-pub const DEVTREE: Dtb<DEVTREE_SIZE> = Dtb(*include_bytes!(env!("DEVTREE_PATH")));
+pub const DEVTREE: Dtb = Dtb(include_bytes!(env!("DEVTREE_PATH")));
+
+impl Dtb {
+    pub unsafe fn from_pointer(ptr: *const u8) -> Self {
+        let size = *((ptr as *const u32).add(1));
+        Dtb(slice::from_raw_parts(ptr, size.swap_bytes() as usize))
+    }
+}
 
 #[derive(Debug)]
 pub struct DeviceTree<'a, A: Allocator> {
@@ -211,10 +217,7 @@ impl<'a, A: Allocator + Debug> DeviceTreeNode<'a, A> {
     }
 }
 
-pub fn decode_dtb<'a, 'b: 'a, A: Allocator, const SIZE: usize>(
-    dtb: &'b Dtb<SIZE>,
-    alloc: &'a A,
-) -> DeviceTree<'a, A> {
+pub fn decode_dtb<'a, 'b: 'a, A: Allocator>(dtb: &'b Dtb, alloc: &'a A) -> DeviceTree<'a, A> {
     println!("Device tree header:");
     let mut reader = BytesReader::new(&dtb.0);
 

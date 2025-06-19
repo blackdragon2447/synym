@@ -4,7 +4,7 @@ ENTRY( _start )
 
 MEMORY
 {
-  kernel_space   (wxa) : ORIGIN = 0x80080000, LENGTH = 32M
+  kernel_space   (wxa) : ORIGIN = 0x80200000, LENGTH = 16M
 }
 
 PHDRS
