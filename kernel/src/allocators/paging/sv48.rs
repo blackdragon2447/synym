@@ -1,7 +1,4 @@
-use core::{
-    fmt::{Debug, Write},
-    ops,
-};
+use core::{fmt::Debug, ops};
 
 use enumflags2::{make_bitflags, BitFlags};
 

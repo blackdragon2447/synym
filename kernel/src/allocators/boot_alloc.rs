@@ -6,13 +6,14 @@ use core::fmt::Write;
 
 use super::LinkedListAllocator;
 
-pub static BOOT_HEAP: LazyLock<Mutex<LinkedListAllocator, SpinLock>, SpinLock> =
-    LazyLock::new(|| unsafe {
-        let mut alloc = LinkedListAllocator::new();
-        let heap_start = LinkedListAllocator::align_start(&raw const _heap_start as usize);
-        let heap_size = &raw const _heap_end as usize - &raw const _heap_start as usize;
-        println!("boot_heap_start: {:#X}", heap_start);
-        println!("boot_heap_size: {:#X}\n", heap_size);
-        alloc.init(heap_start, heap_size);
-        Mutex::<LinkedListAllocator, SpinLock>::new(alloc)
-    });
+pub type BootAllocator = Mutex<LinkedListAllocator, SpinLock>;
+
+pub static BOOT_HEAP: LazyLock<BootAllocator, SpinLock> = LazyLock::new(|| unsafe {
+    let mut alloc = LinkedListAllocator::new();
+    let heap_start = LinkedListAllocator::align_start(&raw const _heap_start as usize);
+    let heap_size = &raw const _heap_end as usize - &raw const _heap_start as usize;
+    println!("boot_heap_start: {:#X}", heap_start);
+    println!("boot_heap_size: {:#X}\n", heap_size);
+    alloc.init(heap_start, heap_size);
+    Mutex::<LinkedListAllocator, SpinLock>::new(alloc)
+});

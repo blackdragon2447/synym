@@ -9,8 +9,7 @@ use crate::{
     sync::{Mutex, SpinLock},
 };
 
-use super::boot_alloc::BOOT_HEAP;
-use super::LinkedListAllocator;
+use super::boot_alloc::{BootAllocator, BOOT_HEAP};
 
 mod sv48;
 pub mod table;
@@ -20,17 +19,14 @@ pub struct Page {
 }
 
 static FREE_PAGES: Mutex<Option<*mut Page>, SpinLock> = Mutex::new(None);
-static USED_PAGES: Mutex<
-    Option<BTreeSet<*mut u8, &Mutex<LinkedListAllocator, SpinLock>>>,
-    SpinLock,
-> = Mutex::new(None);
+static USED_PAGES: Mutex<Option<BTreeSet<*mut u8, &BootAllocator>>, SpinLock> = Mutex::new(None);
 
 pub fn init_page_alloc() {
     *USED_PAGES.lock().unwrap() = Some(BTreeSet::new_in(&*BOOT_HEAP));
 }
 
 pub fn add_pages_from_range(Range { start, end }: Range<usize>) {
-    println!("Adding range: {:#X}..{:#X}", start as usize, end as usize);
+    println!("Adding range: {:#X}..{:#X}", start, end);
     let start = align_up(start, 0x1000);
 
     let mut free = FREE_PAGES.lock().unwrap();
@@ -71,13 +67,10 @@ pub fn get_page() -> Option<*mut u8> {
 }
 
 pub fn get_zpage() -> Option<*mut u8> {
-    get_page().map(|p| {
-        unsafe {
-            slice::from_raw_parts_mut(p as *mut u8, 0x1000)
-                .iter_mut()
-                .for_each(|m| *m = 0);
-        }
-        p
+    get_page().inspect(|&p| unsafe {
+        slice::from_raw_parts_mut(p, 0x1000)
+            .iter_mut()
+            .for_each(|m| *m = 0);
     })
 }
 

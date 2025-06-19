@@ -219,7 +219,7 @@ impl<'a, A: Allocator + Debug> DeviceTreeNode<'a, A> {
 
 pub fn decode_dtb<'a, 'b: 'a, A: Allocator>(dtb: &'b Dtb, alloc: &'a A) -> DeviceTree<'a, A> {
     println!("Device tree header:");
-    let mut reader = BytesReader::new(&dtb.0);
+    let mut reader = BytesReader::new(dtb.0);
 
     let header = Header {
         magic: reader.read_u32_be(),

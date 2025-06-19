@@ -14,7 +14,7 @@
 
 extern crate alloc;
 
-use core::{arch::naked_asm, fmt::Write, ops::Range, panic::PanicInfo, slice};
+use core::{arch::naked_asm, fmt::Write, ops::Range, panic::PanicInfo};
 
 use alloc::vec::Vec;
 use allocators::{
