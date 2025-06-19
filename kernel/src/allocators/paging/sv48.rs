@@ -102,6 +102,12 @@ impl From<u64> for VAddr {
     }
 }
 
+impl From<usize> for VAddr {
+    fn from(value: usize) -> Self {
+        Self(value as u64 & 0x7fff_ffff_ffff)
+    }
+}
+
 impl PAddr {
     pub fn get_ppn(&self) -> [u64; 4] {
         [
@@ -125,5 +131,11 @@ impl PAddr {
 impl From<u64> for PAddr {
     fn from(value: u64) -> Self {
         Self(value & 0x7f_ffff_ffff_ffff)
+    }
+}
+
+impl From<usize> for PAddr {
+    fn from(value: usize) -> Self {
+        Self(value as u64 & 0x7f_ffff_ffff_ffff)
     }
 }

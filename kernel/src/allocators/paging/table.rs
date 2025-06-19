@@ -68,7 +68,6 @@ impl PageTable {
 
         let vpn = vaddr.get_vpn();
 
-        println!("Mapping at level {} ({})", level, vpn_nr);
         let entry = &mut self[vpn[vpn_nr]];
 
         if level > 0 {

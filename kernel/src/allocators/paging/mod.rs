@@ -3,6 +3,7 @@ use core::{fmt::Write, slice};
 
 use alloc::collections::btree_set::BTreeSet;
 
+use crate::allocators::align_up;
 use crate::{
     println,
     sync::{Mutex, SpinLock},
@@ -30,10 +31,7 @@ pub fn init_page_alloc() {
 
 pub fn add_pages_from_range(Range { start, end }: Range<usize>) {
     println!("Adding range: {:#X}..{:#X}", start as usize, end as usize);
-    let align = (start % 0x1000 != 0)
-        .then_some(0x1000 - (start % 0x1000))
-        .unwrap_or(0);
-    let start = start.wrapping_add(align);
+    let start = align_up(start, 0x1000);
 
     let mut free = FREE_PAGES.lock().unwrap();
 

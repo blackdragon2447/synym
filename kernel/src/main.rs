@@ -18,6 +18,7 @@ use core::{arch::naked_asm, fmt::Write, ops::Range, panic::PanicInfo, slice};
 
 use alloc::vec::Vec;
 use allocators::{
+    align_up,
     boot_alloc::BOOT_HEAP,
     paging::{
         add_pages_from_range, get_zpage, init_page_alloc,
@@ -38,10 +39,24 @@ mod sbi;
 mod sync;
 
 extern "C" {
+
+    static _text_start: usize;
+    static _text_end: usize;
+
+    static _rodata_start: usize;
+    static _rodata_end: usize;
+
+    static _data_start: usize;
+    static _data_end: usize;
+
+    static _bss_start: usize;
+    static _bss_end: usize;
+
+    static _stack_start: usize;
+    static _stack_end: usize;
+
     static _heap_start: usize;
     static _heap_end: usize;
-    static _kernel_start: usize;
-    static _kernel_end: usize;
 }
 
 #[macro_export]
@@ -194,25 +209,128 @@ extern "C" fn kinit(
 
     println!("Done collecting free pages\n");
 
-    println!("Setting up paging for kernel");
+    println!("Setting up paging for kernel\n");
 
     let pagetable = unsafe {
         let page = get_zpage().unwrap();
         let table = page as *mut PageTable;
         &mut *table
     };
-    pagetable.map(
-        0x80200000,
-        0x80200000,
-        make_bitflags!(PTEFlags::{Read | Write | Exec }),
-        PTLevel::MegaPage as u64,
+
+    println!("_text_start: {:#X}", &raw const _text_start as usize);
+    println!("_text_end: {:#X}", &raw const _text_end as usize);
+    println!(
+        "_text_end (aligned): {:#X}",
+        align_up(&raw const _text_end as usize, 0x1000),
     );
-    pagetable.map(
-        0x80400000,
-        0x80400000,
-        make_bitflags!(PTEFlags::{Read | Write | Exec }),
-        PTLevel::MegaPage as u64,
+
+    for addr in ((&raw const _text_start as usize)
+        ..(align_up(&raw const _text_end as usize, 0x1000)))
+        .step_by(0x1000)
+    {
+        pagetable.map(
+            addr,
+            addr,
+            make_bitflags!(PTEFlags::{Exec}),
+            PTLevel::Page as u64,
+        );
+    }
+
+    println!("_rodata_start: {:#X}", &raw const _rodata_start as usize);
+    println!("_rodata_end: {:#X}", &raw const _rodata_end as usize);
+    println!(
+        "_rodata_end (aligned): {:#X}",
+        align_up(&raw const _rodata_end as usize, 0x1000),
     );
+
+    for addr in ((&raw const _rodata_start as usize)
+        ..(align_up(&raw const _rodata_end as usize, 0x1000)))
+        .step_by(0x1000)
+    {
+        pagetable.map(
+            addr,
+            addr,
+            make_bitflags!(PTEFlags::{Read}),
+            PTLevel::Page as u64,
+        );
+    }
+
+    println!("_data_start: {:#X}", &raw const _data_start as usize);
+    println!("_data_end: {:#X}", &raw const _data_end as usize);
+    println!(
+        "_data_end (aligned): {:#X}",
+        align_up(&raw const _data_end as usize, 0x1000),
+    );
+
+    for addr in ((&raw const _data_start as usize)
+        ..(align_up(&raw const _data_end as usize, 0x1000)))
+        .step_by(0x1000)
+    {
+        pagetable.map(
+            addr,
+            addr,
+            make_bitflags!(PTEFlags::{Read | Write}),
+            PTLevel::Page as u64,
+        );
+    }
+
+    println!("_bss_start: {:#X}", &raw const _bss_start as usize);
+    println!("_bss_end: {:#X}", &raw const _bss_end as usize);
+    println!(
+        "_bss_end (aligned): {:#X}",
+        align_up(&raw const _bss_end as usize, 0x1000),
+    );
+
+    for addr in ((&raw const _bss_start as usize)..(align_up(&raw const _bss_end as usize, 0x1000)))
+        .step_by(0x1000)
+    {
+        pagetable.map(
+            addr,
+            addr,
+            make_bitflags!(PTEFlags::{Read | Write}),
+            PTLevel::Page as u64,
+        );
+    }
+
+    println!("_stack_start: {:#X}", &raw const _stack_start as usize);
+    println!("_stack_end: {:#X}", &raw const _stack_end as usize);
+    println!(
+        "_stack_end (aligned): {:#X}",
+        align_up(&raw const _stack_end as usize, 0x1000),
+    );
+
+    for addr in ((&raw const _stack_start as usize)
+        ..(align_up(&raw const _stack_end as usize, 0x1000)))
+        .step_by(0x1000)
+    {
+        pagetable.map(
+            addr,
+            addr,
+            make_bitflags!(PTEFlags::{Read | Write}),
+            PTLevel::Page as u64,
+        );
+    }
+
+    println!("_heap_start: {:#X}", &raw const _heap_start as usize);
+    println!("_heap_end: {:#X}", &raw const _heap_end as usize);
+    println!(
+        "_heap_end (aligned): {:#X}",
+        align_up(&raw const _heap_end as usize, 0x1000),
+    );
+
+    for addr in ((&raw const _heap_start as usize)
+        ..(align_up(&raw const _heap_end as usize, 0x1000)))
+        .step_by(0x1000)
+    {
+        pagetable.map(
+            addr,
+            addr,
+            make_bitflags!(PTEFlags::{Read | Write}),
+            PTLevel::Page as u64,
+        );
+    }
+
+    println!();
 
     println!("Set up paging for kernel, using the following page table");
     pagetable.print_recursive();
@@ -225,7 +343,7 @@ extern "C" fn kinit(
     csr::Satp::write(satp);
     let satp_check = csr::Satp::read();
     assert_eq!(satp, satp_check, "Write to satp failed");
-    println!("Seccessfully activated paging");
+    println!("Successfully activated paging");
 
     #[allow(clippy::empty_loop)]
     loop {}

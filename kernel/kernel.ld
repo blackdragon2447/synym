@@ -4,7 +4,7 @@ ENTRY( _start )
 
 MEMORY
 {
-  kernel_space   (wxa) : ORIGIN = 0x80200000, LENGTH = 16M
+  kernel_space   (wxa) : ORIGIN = 0x80200000, LENGTH = 1M
 }
 
 PHDRS
@@ -18,7 +18,7 @@ PHDRS
 SECTIONS
 {
 
-  .text : {
+  .text : ALIGN(4096) {
     PROVIDE(_text_start = .);
     *(.text.init) *(.text .text.*)
     PROVIDE(_text_end = .);
@@ -27,22 +27,22 @@ SECTIONS
   . = ALIGN(8);
   PROVIDE(__global_pointer$ = .);
 
-  .rodata : {
+  .rodata : ALIGN(4096) {
     PROVIDE(_rodata_start = .);
     *(.rodata .rodata.*)
     PROVIDE(_rodata_end = .);
   } >kernel_space :rodata
 
-  .data : {
-    . = ALIGN(4096);
+  .data : ALIGN(4096) {
     PROVIDE(_data_start = .);
     *(.sdata .sdata.*) *(.data .data.*)
     PROVIDE(_data_end = .);
   } >kernel_space :data
 
-  .bss : {
+  .bss : ALIGN(4096) {
     PROVIDE(_bss_start = .);
     *(.sbss .sbss.*) *(.bss .bss.*)
+	. = ALIGN(4096);
     PROVIDE(_bss_end = .);
   } >kernel_space :bss
 
