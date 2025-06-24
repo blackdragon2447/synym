@@ -20,4 +20,3 @@ default = ["hardcode-devicetree"]
 
 hardcode-devicetree = []
 runtime-devicetree = []
-

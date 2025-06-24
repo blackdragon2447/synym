@@ -2,10 +2,15 @@
 
 mod lazylock;
 mod mutex;
+mod once;
+mod oncelock;
 mod spinlock;
 
+// reexports
+#[allow(unused_imports)]
 pub use lazylock::LazyLock;
 pub use mutex::Mutex;
+pub use once::Once;
 pub use spinlock::SpinLock;
 
 #[derive(Debug)]

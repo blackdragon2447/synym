@@ -47,7 +47,7 @@ where
 
     fn deref(&self) -> &Self::Target {
         let guard = self.lock.lock().unwrap();
-        let data = unsafe { &*self.data.get() };
+        let data = unsafe { self.data.as_ref_unchecked() };
         match data {
             State::Uninit => {
                 // SAFETY:
@@ -56,7 +56,7 @@ where
                 // The `data` refence technically observes the change but we
                 // happily ignore it, since we know there are no accesses to
                 // `data` while we write to it.
-                unsafe { self.data.get().write(State::Init((self.init)())) }
+                unsafe { *self.data.as_mut_unchecked() = State::Init((self.init)()) }
                 guard.unlock();
                 // This unwrap will never panic, as we have just initialsed it.
                 data.unwrap()

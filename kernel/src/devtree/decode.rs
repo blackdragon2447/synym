@@ -58,17 +58,3 @@ pub struct FdtNodeProperty<'a> {
     name: &'a str,
     data: &'a [u8],
 }
-
-pub struct DebugLimList<'a, T: Debug>(pub &'a [T]);
-
-impl<'a, T: Debug> Debug for DebugLimList<'a, T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        if self.0.len() <= 5 {
-            f.debug_list().entries(self.0.iter()).finish()
-        } else {
-            f.debug_list()
-                .entries(self.0.iter().take(5))
-                .finish_non_exhaustive()
-        }
-    }
-}

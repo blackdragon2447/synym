@@ -1,8 +1,8 @@
-use core::fmt::{Display, Write};
 use core::ops::{Index, IndexMut};
 
 use enumflags2::{bitflags, BitFlags};
 
+use crate::io::console::Indent;
 use crate::{allocators::paging::get_zpage, println};
 
 use super::sv48::{PAddr, PTEntry, VAddr};
@@ -130,16 +130,5 @@ impl Index<u64> for PageTable {
 impl IndexMut<u64> for PageTable {
     fn index_mut(&mut self, index: u64) -> &mut Self::Output {
         &mut self[index as usize]
-    }
-}
-
-struct Indent(pub usize);
-
-impl Display for Indent {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        for _ in 0..self.0 {
-            write!(f, "\t")?;
-        }
-        Ok(())
     }
 }

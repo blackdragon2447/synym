@@ -4,6 +4,7 @@ resolver = "2"
 
 [profile.release]
 panic = "abort"
+debug = "full"
 
 [profile.dev]
 panic = "abort"

@@ -3,10 +3,8 @@
     str_from_raw_parts,
     debug_closure_helpers,
     allocator_api,
-    negative_impls,
     iter_collect_into,
-    pointer_is_aligned_to,
-    btreemap_alloc
+    unsafe_cell_access
 )]
 #![no_std]
 #![no_main]
@@ -14,14 +12,13 @@
 
 extern crate alloc;
 
-use core::{arch::naked_asm, fmt::Write, ops::Range, panic::PanicInfo};
+use core::{arch::naked_asm, ops::Range, panic::PanicInfo};
 
-use alloc::vec::Vec;
+use alloc::{format, vec::Vec};
 use allocators::{
-    align_up,
-    boot_alloc::BOOT_HEAP,
+    align_up, init_global_alloc,
     paging::{
-        add_pages_from_range, get_zpage, init_page_alloc,
+        add_pages_from_range, get_zpage,
         table::{PTEFlags, PTLevel, PageTable},
     },
 };
@@ -29,17 +26,16 @@ use csr::Csr;
 #[cfg(feature = "runtime-devicetree")]
 use devtree::Dtb;
 use enumflags2::make_bitflags;
-use sync::{LazyLock, Mutex, SpinLock};
+use io::klog::{get_loglevel, set_loglevel, LogLevel};
 
 mod allocators;
-mod bytesreader;
 mod csr;
 mod devtree;
+mod io;
 mod sbi;
 mod sync;
 
 extern "C" {
-
     static _text_start: usize;
     static _text_end: usize;
 
@@ -59,29 +55,9 @@ extern "C" {
     static _heap_end: usize;
 }
 
-#[macro_export]
-macro_rules! println {
-    ($($arg:tt)*) => {
-        writeln!($crate::sbi::debug_console::Console, $($arg)*).unwrap()
-    };
-    () => {
-        writeln!($crate::sbi::debug_console::Console, "").unwrap()
-    };
-}
-
-#[macro_export]
-macro_rules! print {
-    ($($arg:tt)*) => {
-        write!($crate::sbi::debug_console::Console, $($arg)*).unwrap()
-    };
-    () => {
-        write!($crate::sbi::debug_console::Console, "").unwrap()
-    };
-}
-
 #[panic_handler]
 fn panic_handler(info: &PanicInfo) -> ! {
-    println!("{info}");
+    error!("{info}");
     loop {}
 }
 
@@ -112,7 +88,7 @@ unsafe extern "C" fn _start() -> ! {
     )
 }
 
-fn print_hello() {
+fn print_banner() {
     let text = "
  ____                              
 / ___| _   _ _ __  _   _ _ __ ___  
@@ -127,70 +103,79 @@ fn print_hello() {
 
 #[no_mangle]
 extern "C" fn kinit(
-    hartid: usize,
+    _hartid: usize,
     #[cfg(feature = "runtime-devicetree")] dtb_addr: *const u8,
 ) -> ! {
-    print_hello();
+    set_loglevel(LogLevel::Trace);
 
-    println!("Starting hart {hartid}");
-    #[cfg(feature = "runtime-devicetree")]
-    println!("DTB is at {:#X}", dtb_addr as usize);
+    print_banner();
 
-    let lock = Mutex::<&'static str, SpinLock>::new("");
-    let mut guard = lock.lock().unwrap();
-    *guard = "Hello Mutex\n";
-    let lock = LazyLock::<&'static str, SpinLock>::new(|| "Hello LazyLock\n");
+    let heap_start = &raw const _heap_start as usize;
+    debug!("heap_start: {:#X}", heap_start);
+    let heap_end = &raw const _heap_end as usize;
+    debug!("heap_end: {:#X}", heap_end);
 
-    println!("{}", *guard);
-    println!("{}", *lock);
-    println!("");
+    add_pages_from_range(heap_start..heap_end);
+
+    init_global_alloc(get_zpage);
+
+    debug!("Parsing devtree");
 
     #[cfg(feature = "hardcode-devicetree")]
-    let devtree = devtree::decode_dtb(&devtree::DEVTREE, &*BOOT_HEAP);
+    let devtree = devtree::decode_dtb(&devtree::DEVTREE);
     #[cfg(feature = "runtime-devicetree")]
     let dtb = unsafe { Dtb::from_pointer(dtb_addr) };
     #[cfg(feature = "runtime-devicetree")]
     let devtree = {
-        let tree = devtree::decode_dtb(&dtb, &*BOOT_HEAP);
+        let tree = devtree::decode_dtb(&dtb);
         tree
     };
 
-    println!("Memory nodes in devtree");
-    let mut mem_regions = Vec::new_in(&*BOOT_HEAP);
-    let mem_nodes = devtree.get_nodes("/memory", &*BOOT_HEAP);
+    debug!("Memory nodes in devtree");
+    let mut mem_regions = Vec::new();
+    let mem_nodes = devtree.get_nodes("/memory");
     for mem in mem_nodes {
         assert!(mem.unit_name() == "memory");
-        println!("node: {}", mem.name());
-        let reg = devtree
-            .regs_for_node("/memory", mem.unit_addr(), &*BOOT_HEAP)
-            .unwrap();
+        debug!("node: {}", mem.name());
+        let reg = devtree.regs_for_node("/memory", mem.unit_addr()).unwrap();
         mem_regions.extend(reg.into_iter());
     }
-    println!("End memory nodes in devtree\n");
+    debug!("End memory nodes in devtree");
 
-    println!("Memory regions");
-    for (a, s) in &mem_regions {
-        println!("reg_addr: {a:#X}, reg_size: {s:#X}, reg_end: {:#X}", a + s);
+    if let Some(reseverd_mem) = devtree.get_nodes("/reserved-memory").pop() {
+        for node in &reseverd_mem.childeren {
+            debug!("{:#?}", node);
+            let parent = "/reserved-memory/";
+            let name = node.unit_name();
+            let addr = node.unit_addr();
+            let path = format!("{}{}", parent, name);
+
+            let regs = devtree.regs_for_node(&path, addr);
+
+            debug!("{:#?}", regs);
+        }
     }
-    println!("End memory regions\n");
+
+    debug!("Memory regions");
+    for (a, s) in &mem_regions {
+        debug!("reg_addr: {a:#X}, reg_size: {s:#X}, reg_end: {:#X}", a + s);
+    }
+    debug!("End memory regions");
 
     let heap_end = unsafe {
         let heap_end = &_heap_end as *const usize;
         let align = heap_end.align_offset(0x1000);
         let heap_end_aligned = heap_end.wrapping_add(align);
-        println!(
-            "free pages start: {:#X} ({:#X})\n",
+        debug!(
+            "free pages start: {:#X} ({:#X})",
             heap_end as usize, heap_end_aligned as usize
         );
         heap_end_aligned as usize
     };
 
-    println!("Collecting free pages");
-
-    init_page_alloc();
+    info!("Collecting free pages");
 
     for (a, s) in &mem_regions {
-        println!("{:#X}, {:#X}", a, s);
         let range = *a..(a + s);
         if range.contains(&heap_end) {
             match sub_range(range, *a..heap_end) {
@@ -207,9 +192,9 @@ extern "C" fn kinit(
         }
     }
 
-    println!("Done collecting free pages\n");
+    info!("Done collecting free pages");
 
-    println!("Setting up paging for kernel\n");
+    info!("Setting up paging for kernel");
 
     let pagetable = unsafe {
         let page = get_zpage().unwrap();
@@ -217,9 +202,9 @@ extern "C" fn kinit(
         &mut *table
     };
 
-    println!("_text_start: {:#X}", &raw const _text_start as usize);
-    println!("_text_end: {:#X}", &raw const _text_end as usize);
-    println!(
+    trace!("_text_start: {:#X}", &raw const _text_start as usize);
+    trace!("_text_end: {:#X}", &raw const _text_end as usize);
+    trace!(
         "_text_end (aligned): {:#X}",
         align_up(&raw const _text_end as usize, 0x1000),
     );
@@ -236,9 +221,9 @@ extern "C" fn kinit(
         );
     }
 
-    println!("_rodata_start: {:#X}", &raw const _rodata_start as usize);
-    println!("_rodata_end: {:#X}", &raw const _rodata_end as usize);
-    println!(
+    trace!("_rodata_start: {:#X}", &raw const _rodata_start as usize);
+    trace!("_rodata_end: {:#X}", &raw const _rodata_end as usize);
+    trace!(
         "_rodata_end (aligned): {:#X}",
         align_up(&raw const _rodata_end as usize, 0x1000),
     );
@@ -255,9 +240,9 @@ extern "C" fn kinit(
         );
     }
 
-    println!("_data_start: {:#X}", &raw const _data_start as usize);
-    println!("_data_end: {:#X}", &raw const _data_end as usize);
-    println!(
+    trace!("_data_start: {:#X}", &raw const _data_start as usize);
+    trace!("_data_end: {:#X}", &raw const _data_end as usize);
+    trace!(
         "_data_end (aligned): {:#X}",
         align_up(&raw const _data_end as usize, 0x1000),
     );
@@ -274,9 +259,9 @@ extern "C" fn kinit(
         );
     }
 
-    println!("_bss_start: {:#X}", &raw const _bss_start as usize);
-    println!("_bss_end: {:#X}", &raw const _bss_end as usize);
-    println!(
+    trace!("_bss_start: {:#X}", &raw const _bss_start as usize);
+    trace!("_bss_end: {:#X}", &raw const _bss_end as usize);
+    trace!(
         "_bss_end (aligned): {:#X}",
         align_up(&raw const _bss_end as usize, 0x1000),
     );
@@ -292,9 +277,9 @@ extern "C" fn kinit(
         );
     }
 
-    println!("_stack_start: {:#X}", &raw const _stack_start as usize);
-    println!("_stack_end: {:#X}", &raw const _stack_end as usize);
-    println!(
+    trace!("_stack_start: {:#X}", &raw const _stack_start as usize);
+    trace!("_stack_end: {:#X}", &raw const _stack_end as usize);
+    trace!(
         "_stack_end (aligned): {:#X}",
         align_up(&raw const _stack_end as usize, 0x1000),
     );
@@ -311,9 +296,9 @@ extern "C" fn kinit(
         );
     }
 
-    println!("_heap_start: {:#X}", &raw const _heap_start as usize);
-    println!("_heap_end: {:#X}", &raw const _heap_end as usize);
-    println!(
+    trace!("_heap_start: {:#X}", &raw const _heap_start as usize);
+    trace!("_heap_end: {:#X}", &raw const _heap_end as usize);
+    trace!(
         "_heap_end (aligned): {:#X}",
         align_up(&raw const _heap_end as usize, 0x1000),
     );
@@ -330,20 +315,21 @@ extern "C" fn kinit(
         );
     }
 
-    println!();
-
-    println!("Set up paging for kernel, using the following page table");
-    pagetable.print_recursive();
+    if get_loglevel() >= LogLevel::Debug {
+        debug!("Set up paging for kernel, using the following page table");
+        pagetable.print_recursive();
+    } else {
+        info!("Set up paging for kernel")
+    }
 
     let satp = (9 << 60)
         | (0xffff << 44)
         | (((pagetable as *mut PageTable as u64) >> 12) & 0xfff_ffff_ffff);
 
-    println!();
     csr::Satp::write(satp);
     let satp_check = csr::Satp::read();
     assert_eq!(satp, satp_check, "Write to satp failed");
-    println!("Successfully activated paging");
+    info!("Successfully activated paging");
 
     #[allow(clippy::empty_loop)]
     loop {}

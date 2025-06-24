@@ -32,7 +32,7 @@ impl<T, L: Lock> Mutex<T, L> {
         let guard = self.lock.lock()?;
         Ok(MutexGuard {
             guard,
-            data: unsafe { &mut *self.data.get() },
+            data: unsafe { self.data.as_mut_unchecked() },
         })
     }
 
@@ -40,8 +40,14 @@ impl<T, L: Lock> Mutex<T, L> {
         let guard = self.lock.try_lock()?;
         Ok(MutexGuard {
             guard,
-            data: unsafe { &mut *self.data.get() },
+            data: unsafe { self.data.as_mut_unchecked() },
         })
+    }
+
+    // Since we have ownership, we're the only one with access
+    pub fn take(self) -> T {
+        let Self { data, .. } = self;
+        data.into_inner()
     }
 }
 

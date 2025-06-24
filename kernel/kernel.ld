@@ -49,7 +49,7 @@ SECTIONS
   PROVIDE(_kernel_start= ORIGIN(kernel_space));
   PROVIDE(_kernel_size = LENGTH(kernel_space));
   PROVIDE(_stack_start = _bss_end);
-  PROVIDE(_stack_end = _stack_start + 16K);
+  PROVIDE(_stack_end = _stack_start + 64K);
   PROVIDE(_heap_start = _stack_end);
   PROVIDE(_heap_end = _kernel_start + _kernel_size);
 

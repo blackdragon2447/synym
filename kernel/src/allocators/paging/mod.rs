@@ -1,32 +1,72 @@
 use core::ops::Range;
-use core::{fmt::Write, slice};
-
-use alloc::collections::btree_set::BTreeSet;
+use core::slice;
 
 use crate::allocators::align_up;
-use crate::{
-    println,
-    sync::{Mutex, SpinLock},
-};
-
-use super::boot_alloc::{BootAllocator, BOOT_HEAP};
+use crate::sync::{Mutex, SpinLock};
+use crate::trace;
 
 mod sv48;
 pub mod table;
 
-pub struct Page {
+struct Page {
     next: Option<*mut Page>,
 }
 
-static FREE_PAGES: Mutex<Option<*mut Page>, SpinLock> = Mutex::new(None);
-static USED_PAGES: Mutex<Option<BTreeSet<*mut u8, &BootAllocator>>, SpinLock> = Mutex::new(None);
+pub const PAGE_SIZE: usize = 4096;
 
-pub fn init_page_alloc() {
-    *USED_PAGES.lock().unwrap() = Some(BTreeSet::new_in(&*BOOT_HEAP));
-}
+// enum UsedPages {
+//     ConstVec(ConstVec<*mut u8, 512>),
+//     BTreeSet(BTreeSet<*mut u8>),
+// }
+
+static FREE_PAGES: Mutex<Option<*mut Page>, SpinLock> = Mutex::new(None);
+// static USED_PAGES: Mutex<UsedPages, SpinLock> = Mutex::new(UsedPages::ConstVec(ConstVec::new()));
+
+// pub fn init_page_alloc() {
+//     let used = USED_PAGES.lock().unwrap();
+//     let UsedPages::ConstVec(ref vec) = *used else {
+//         panic!("Double init of page alloc");
+//     };
+//     // We make a copy of the vec and
+//     let vec = vec.clone();
+//     used.unlock();
+//
+//     let mut set = BTreeSet::new();
+//     for p in vec.iter() {
+//         set.insert(*p);
+//     }
+//     let mut used = USED_PAGES.lock().unwrap();
+//     *used = UsedPages::BTreeSet(set);
+// }
+//
+// impl UsedPages {
+//     fn insert(&mut self, ptr: *mut u8) {
+//         match self {
+//             UsedPages::ConstVec(const_vec) => {
+//                 const_vec.push(ptr).unwrap();
+//             }
+//             UsedPages::BTreeSet(btree_set) => {
+//                 btree_set.insert(ptr);
+//             }
+//         }
+//     }
+//
+//     fn remove(&mut self, ptr: *mut u8) -> bool {
+//         match self {
+//             UsedPages::ConstVec(const_vec) => {
+//                 let Some((idx, _)) = const_vec.iter().enumerate().find(|&(_, &p)| p == ptr) else {
+//                     return false;
+//                 };
+//                 const_vec.swap_remove(idx);
+//                 true
+//             }
+//             UsedPages::BTreeSet(btree_set) => btree_set.remove(&ptr),
+//         }
+//     }
+// }
 
 pub fn add_pages_from_range(Range { start, end }: Range<usize>) {
-    println!("Adding range: {:#X}..{:#X}", start, end);
+    trace!("Adding range: {:#X}..{:#X}", start, end);
     let start = align_up(start, 0x1000);
 
     let mut free = FREE_PAGES.lock().unwrap();
@@ -50,16 +90,14 @@ pub fn add_pages_from_range(Range { start, end }: Range<usize>) {
 
 pub fn get_page() -> Option<*mut u8> {
     let mut free = FREE_PAGES.lock().unwrap();
-    let mut used = USED_PAGES.lock().unwrap();
+    // let mut used = USED_PAGES.lock().unwrap();
 
     if let Some(p) = *free {
         unsafe {
             *free = (*p).next;
         }
 
-        used.as_mut()
-            .expect("Page allocater need to be inited before its used")
-            .insert(p as *mut u8);
+        // used.insert(p as *mut u8);
         Some(p as *mut u8)
     } else {
         None
@@ -75,33 +113,18 @@ pub fn get_zpage() -> Option<*mut u8> {
 }
 
 pub fn return_page(page: *mut u8) {
-    let mut used = USED_PAGES.lock().unwrap();
+    // let mut used = USED_PAGES.lock().unwrap();
+    //
+    // if used.remove(page) {
+    let mut free = FREE_PAGES.lock().unwrap();
 
-    if used
-        .as_mut()
-        .expect("Page allocater need to be inited before its used")
-        .remove(&page)
-    {
-        let mut free = FREE_PAGES.lock().unwrap();
-
-        let page = page as *mut Page;
-        let next = core::mem::take(&mut *free);
-        unsafe {
-            *page = Page { next };
-        }
-        *free = Some(page);
-    } else {
-        panic!("Trying to return a page which was never taken")
+    let page = page as *mut Page;
+    let next = core::mem::take(&mut *free);
+    unsafe {
+        *page = Page { next };
     }
-}
-
-pub fn print_free_pages() {
-    let mut list = *FREE_PAGES.lock().unwrap();
-
-    while let Some(p) = list {
-        unsafe {
-            println!("{:#X}", p as usize);
-            list = (*p).next;
-        }
-    }
+    *free = Some(page);
+    // } else {
+    //     panic!("Trying to return a page which was never taken")
+    // }
 }

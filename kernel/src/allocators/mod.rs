@@ -1,16 +1,8 @@
 // Based off https://os.phil-opp.com/allocator-designs/#linked-list-allocator
-pub mod boot_alloc;
-mod linked_list_alloc;
+mod buddy_alloc;
 pub mod paging;
 
-pub use linked_list_alloc::LinkedListAllocator;
-
-use crate::sync::{Mutex, SpinLock};
-
-// Note, we won't use this allocator for now, this is gonna be an allocator that uses paging,
-// it is just here to make the alloc crate happy
-#[global_allocator]
-static GLOBAL_ALLOC: Mutex<LinkedListAllocator, SpinLock> = Mutex::new(LinkedListAllocator::new());
+pub use buddy_alloc::init_global_alloc;
 
 /// Align the given address `addr` upwards to alignment `align`.
 ///
